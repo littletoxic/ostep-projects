@@ -1,1 +1,4 @@
 .vscode
+initial-memcached/memcached-1.6.17/*
+!/initial-memcached/memcached-1.6.17/*.c
+!/initial-memcached/memcached-1.6.17/*.h
