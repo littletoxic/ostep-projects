@@ -177,6 +177,11 @@
 
 #define FLAGS_SIZE(item) (((item)->it_flags & ITEM_CFLAGS) ? sizeof(uint32_t) : 0)
 
+/* arithmetic type */
+enum arithmetic_type {
+    t_decr, t_incr, t_div, t_mult
+};
+
 /**
  * Callback for any function producing stats.
  *
@@ -297,7 +302,9 @@ enum delta_result_type {
     X(cas_hits) \
     X(cas_badval) \
     X(incr_hits) \
-    X(decr_hits)
+    X(decr_hits) \
+    X(div_hits) \
+    X(mult_hits)
 
 /** Stats stored per slab (and per thread). */
 struct slab_stats {
@@ -915,7 +922,7 @@ extern void *ext_storage;
  */
 void do_accept_new_conns(const bool do_accept);
 enum delta_result_type do_add_delta(conn *c, const char *key,
-                                    const size_t nkey, const bool incr,
+                                    const size_t nkey, enum arithmetic_type type,
                                     const int64_t delta, char *buf,
                                     uint64_t *cas, const uint32_t hv,
                                     item **it_ret);
@@ -962,7 +969,7 @@ void sidethread_conn_close(conn *c);
 
 /* Lock wrappers for cache functions that are called from main loop. */
 enum delta_result_type add_delta(conn *c, const char *key,
-                                 const size_t nkey, bool incr,
+                                 const size_t nkey, enum arithmetic_type type,
                                  const int64_t delta, char *buf,
                                  uint64_t *cas);
 void accept_new_conns(const bool do_accept);

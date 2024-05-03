@@ -2232,7 +2232,7 @@ item* limited_get_locked(char *key, size_t nkey, conn *c, bool do_update, uint32
  * returns a response string to send back to the client.
  */
 enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
-                                    const bool incr, const int64_t delta,
+                                    enum arithmetic_type type, const int64_t delta,
                                     char *buf, uint64_t *cas,
                                     const uint32_t hv,
                                     item **it_ret) {
@@ -2269,7 +2269,28 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
         return NON_NUMERIC;
     }
 
-    if (incr) {
+    switch (type) {
+    case t_incr:
+        value += delta;
+        MEMCACHED_COMMAND_INCR(c->sfd, ITEM_key(it), it->nkey, value);
+        break;
+    case t_decr:
+        if(delta > value) {
+            value = 0;
+        } else {
+            value -= delta;
+        }
+        MEMCACHED_COMMAND_DECR(c->sfd, ITEM_key(it), it->nkey, value);
+        break;
+    case t_mult:
+        value *= delta;
+        break;
+    case t_div:
+        value /= delta;
+        break;
+    }
+
+    /*if (incr) {
         value += delta;
         MEMCACHED_COMMAND_INCR(c->sfd, ITEM_key(it), it->nkey, value);
     } else {
@@ -2279,15 +2300,32 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
             value -= delta;
         }
         MEMCACHED_COMMAND_DECR(c->sfd, ITEM_key(it), it->nkey, value);
-    }
+    }*/
 
     pthread_mutex_lock(&c->thread->stats.mutex);
+    switch (type) {
+    case t_incr:
+        c->thread->stats.slab_stats[ITEM_clsid(it)].incr_hits++;
+        break;
+    case t_decr:
+        c->thread->stats.slab_stats[ITEM_clsid(it)].decr_hits++;
+        break;
+    case t_mult:
+        c->thread->stats.slab_stats[ITEM_clsid(it)].mult_hits++;
+        break;
+    case t_div:
+        c->thread->stats.slab_stats[ITEM_clsid(it)].div_hits++;
+        break;
+    }
+    pthread_mutex_unlock(&c->thread->stats.mutex);
+
+    /*pthread_mutex_lock(&c->thread->stats.mutex);
     if (incr) {
         c->thread->stats.slab_stats[ITEM_clsid(it)].incr_hits++;
     } else {
         c->thread->stats.slab_stats[ITEM_clsid(it)].decr_hits++;
     }
-    pthread_mutex_unlock(&c->thread->stats.mutex);
+    pthread_mutex_unlock(&c->thread->stats.mutex);*/
 
     itoa_u64(value, buf);
     res = strlen(buf);
