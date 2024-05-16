@@ -242,6 +242,9 @@ static void *Reducer_Thread(void *p_n) {
   unsigned long partition_number = (unsigned long)p_n;
   Part *part = &store.parts[partition_number];
 
+  // sort in parallel
+  Sort_Keys(part);
+
   part->iter = 0;
   for (int i = 0; i < part->len; i++) {
 
@@ -288,10 +291,8 @@ void MR_Run(int argc, char *argv[], Mapper map, int num_mappers, Reducer reduce,
   // wait all threads finished
   // 1.3 destory thread pool
   Wait_And_Destory_Pool();
-  // 2. sort
-  for (int i = 0; i < num_reducers; i++) {
-    Sort_Keys(&store.parts[i]);
-  }
+  // 2. sort (now in parallel)
+
   // 3. reduce
   pthread_t *threads = malloc(sizeof(pthread_t) * num_reducers);
   assert(threads != NULL);

@@ -3,8 +3,8 @@
 
 #include <pthread.h>
 
-#define QUEUE_MAX 32
-#define DEFAULT_LIST_CAPACITY 64
+#define QUEUE_MAX (1 << 7)
+#define DEFAULT_LIST_CAPACITY  (1 << 15)
 
 typedef struct Wait_Queue {
   char *buffer[QUEUE_MAX];
