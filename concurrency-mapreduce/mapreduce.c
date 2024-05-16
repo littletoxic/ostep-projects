@@ -252,6 +252,20 @@ static void *Reducer_Thread(void *p_n) {
     part->iter++;
   }
 
+  // release resources in part
+  for (int i = 0; i < part->len; i++) {
+    for (int j = 0; j < part->keys[i].len; j++) {
+      // free each saved value
+      free(part->keys[i].values[j]);
+    }
+    // free key
+    free(part->keys[i].key);
+  }
+  // free Key_With_Value_List struct array
+  free(part->keys);
+
+  assert(pthread_mutex_destroy(&part->lock) == 0);
+
   return NULL;
 }
 
@@ -288,4 +302,5 @@ void MR_Run(int argc, char *argv[], Mapper map, int num_mappers, Reducer reduce,
     assert(pthread_join(threads[i], NULL) == 0);
   }
   free(threads);
+  free(store.parts);
 }
