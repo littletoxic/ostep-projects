@@ -4,7 +4,8 @@
 #include <pthread.h>
 
 #define QUEUE_MAX (1 << 7)
-#define DEFAULT_LIST_CAPACITY  (1 << 15)
+#define DEFAULT_LIST_CAPACITY (1 << 15)
+#define LOAD_FACTOR 0.5
 
 typedef struct Wait_Queue {
   char *buffer[QUEUE_MAX];
@@ -20,21 +21,24 @@ typedef struct Mapper_Thread_Pool {
   Wait_Queue queue;
 } Mapper_Thread_Pool;
 
-typedef struct Key_With_Value_List {
+// 使用开放寻址线性探测，不需要考虑删除问题
+typedef struct Key_With_Values {
   char *key;
   char **values;
   int len;
   int capacity;
+  // 遍历时初始化
   int iter;
-} Key_With_Value_List;
+} Key_With_Values;
 
 typedef struct Part {
   int len;
   int capacity;
-  int iter;
-  Key_With_Value_List *keys;
+  Key_With_Values **keys;
   // each part needs a lock
   pthread_mutex_t lock;
+  // 遍历时初始化
+  int iter;
 } Part;
 
 typedef struct Store {
