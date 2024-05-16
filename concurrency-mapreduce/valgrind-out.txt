@@ -1,15 +1,15 @@
-==109191== Memcheck, a memory error detector
-==109191== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
-==109191== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
-==109191== Command: ./main main.c mapreduce.c mapreduce.h mrtypes.h
-==109191== Parent PID: 510
-==109191== 
-==109191== 
-==109191== HEAP SUMMARY:
-==109191==     in use at exit: 0 bytes in 0 blocks
-==109191==   total heap usage: 3,470 allocs, 3,470 frees, 349,356 bytes allocated
-==109191== 
-==109191== All heap blocks were freed -- no leaks are possible
-==109191== 
-==109191== For lists of detected and suppressed errors, rerun with: -s
-==109191== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+==133445== Memcheck, a memory error detector
+==133445== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==133445== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
+==133445== Command: ./main test_files/file_0.txt test_files/file_1.txt test_files/file_10.txt test_files/file_11.txt test_files/file_12.txt test_files/file_13.txt test_files/file_14.txt test_files/file_15.txt test_files/file_16.txt test_files/file_17.txt test_files/file_18.txt test_files/file_19.txt test_files/file_2.txt test_files/file_20.txt test_files/file_21.txt test_files/file_22.txt test_files/file_23.txt test_files/file_24.txt test_files/file_25.txt test_files/file_26.txt test_files/file_27.txt test_files/file_28.txt test_files/file_29.txt test_files/file_3.txt test_files/file_30.txt test_files/file_31.txt test_files/file_32.txt test_files/file_33.txt test_files/file_34.txt test_files/file_35.txt test_files/file_36.txt test_files/file_37.txt test_files/file_38.txt test_files/file_39.txt test_files/file_4.txt test_files/file_40.txt test_files/file_41.txt test_files/file_42.txt test_files/file_43.txt test_files/file_44.txt test_files/file_45.txt test_files/file_46.txt test_files/file_47.txt test_files/file_48.txt test_files/file_49.txt test_files/file_5.txt test_files/file_50.txt test_files/file_51.txt test_files/file_52.txt test_files/file_53.txt test_files/file_54.txt test_files/file_55.txt test_files/file_56.txt test_files/file_57.txt test_files/file_58.txt test_files/file_59.txt test_files/file_6.txt test_files/file_60.txt test_files/file_61.txt test_files/file_62.txt test_files/file_63.txt test_files/file_64.txt test_files/file_65.txt test_files/file_66.txt test_files/file_67.txt test_files/file_68.txt test_files/file_69.txt test_files/file_7.txt test_files/file_70.txt test_files/file_71.txt test_files/file_72.txt test_files/file_73.txt test_files/file_74.txt test_files/file_75.txt test_files/file_76.txt test_files/file_77.txt test_files/file_78.txt test_files/file_79.txt test_files/file_8.txt test_files/file_80.txt test_files/file_81.txt test_files/file_82.txt test_files/file_83.txt test_files/file_84.txt test_files/file_85.txt test_files/file_86.txt test_files/file_87.txt test_files/file_88.txt test_files/file_89.txt test_files/file_9.txt test_files/file_90.txt test_files/file_91.txt test_files/file_92.txt test_files/file_93.txt test_files/file_94.txt test_files/file_95.txt test_files/file_96.txt test_files/file_97.txt test_files/file_98.txt test_files/file_99.txt
+==133445== Parent PID: 510
+==133445== 
+==133445== 
+==133445== HEAP SUMMARY:
+==133445==     in use at exit: 0 bytes in 0 blocks
+==133445==   total heap usage: 103,420 allocs, 103,420 frees, 3,572,905 bytes allocated
+==133445== 
+==133445== All heap blocks were freed -- no leaks are possible
+==133445== 
+==133445== For lists of detected and suppressed errors, rerun with: -s
+==133445== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

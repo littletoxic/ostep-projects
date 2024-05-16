@@ -13,6 +13,9 @@ void Map(char *file_name) {
   while (getline(&line, &size, fp) != -1) {
     char *token, *dummy = line;
     while ((token = strsep(&dummy, " \t\n\r")) != NULL) {
+      if (token[0] == 0) {
+        continue;
+      }
       MR_Emit(token, "1");
     }
   }

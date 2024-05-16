@@ -202,7 +202,7 @@ static int partition(Key_With_Value_List keys[], int left, int right) {
     while (i < j && strcmp(keys[j].key, keys[left].key) >= 0) {
       j--; // 从右向左找首个小于基准数的元素
     }
-    while (i < j && strcmp(keys[j].key, keys[left].key) <= 0) {
+    while (i < j && strcmp(keys[i].key, keys[left].key) <= 0) {
       i++; // 从左向右找首个大于基准数的元素
     }
     // 交换这两个元素
