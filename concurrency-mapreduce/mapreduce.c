@@ -114,7 +114,7 @@ static void Wait_And_Destory_Pool() {
   assert(pthread_cond_destroy(&pool->queue.fill) == 0);
   assert(pthread_cond_destroy(&pool->queue.empty) == 0);
   assert(pthread_mutex_destroy(&pool->queue.mutex) == 0);
-
+  free(pool->threads);
   free(pool);
 }
 
@@ -260,6 +260,8 @@ static void *Reducer_Thread(void *p_n) {
     }
     // free key
     free(part->keys[i].key);
+    // free values array
+    free(part->keys[i].values);
   }
   // free Key_With_Value_List struct array
   free(part->keys);
