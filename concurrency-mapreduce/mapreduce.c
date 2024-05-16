@@ -11,6 +11,7 @@ static Store store;
 static Mapper mapper;
 static Mapper_Thread_Pool *pool;
 static Partitioner p;
+static Reducer reducer;
 
 static void Init_Store(int num_partitions) {
   store.partition_count = num_partitions;
@@ -18,13 +19,14 @@ static void Init_Store(int num_partitions) {
   assert(store.parts != NULL);
 
   for (int i = 0; i < num_partitions; i++) {
+    // init each partition
     assert(pthread_mutex_init(&store.parts[i].lock, NULL) == 0);
     store.parts[i].capacity = DEFAULT_LIST_CAPACITY;
     store.parts[i].len = 0;
-    Key_With_Value_List *values;
-    values = malloc(sizeof(Key_With_Value_List) * store.parts[i].capacity);
-    assert(values != NULL);
-    store.parts[i].keys = values;
+    Key_With_Value_List *keys;
+    keys = malloc(sizeof(Key_With_Value_List) * DEFAULT_LIST_CAPACITY);
+    assert(keys != NULL);
+    store.parts[i].keys = keys;
   }
 }
 
@@ -55,11 +57,13 @@ static inline void Ensure_Values_Capacity(Key_With_Value_List *list) {
 }
 
 static inline void Insert_Key_To_Partition(Part *part, char *key, int pos_k) {
-  part->keys[pos_k].key = strdup(key);
-  assert(part->keys[pos_k].key != NULL);
-  part->keys[pos_k].values =
-      malloc(sizeof(char *) * part->keys[pos_k].capacity);
-  assert(part->keys[pos_k].values != NULL);
+  Key_With_Value_List *key_with_list = &part->keys[pos_k];
+  key_with_list->key = strdup(key);
+  assert(key_with_list->key != NULL);
+  key_with_list->capacity = DEFAULT_LIST_CAPACITY;
+  key_with_list->len = 0;
+  key_with_list->values = malloc(sizeof(char *) * DEFAULT_LIST_CAPACITY);
+  assert(key_with_list->values != NULL);
 }
 
 static inline void Insert_Value(Key_With_Value_List *list, char *value) {
@@ -79,7 +83,7 @@ void MR_Emit(char *key, char *value) {
   if ((pos_k = Found_Key(key, pos_p)) == -1) {
     Ensure_Keys_Capacity(&store.parts[pos_p]);
 
-    pos_k = store.parts[pos_p].keys[pos_k].len++;
+    pos_k = store.parts[pos_p].len++;
     Insert_Key_To_Partition(&store.parts[pos_p], key, pos_k);
   }
 
@@ -114,7 +118,7 @@ static void Wait_And_Destory_Pool() {
   free(pool);
 }
 
-void *Thread_Loop(void *args) {
+static void *Mapper_Thread_Loop(void *args) {
 
   mapper(args);
 
@@ -140,7 +144,7 @@ void *Thread_Loop(void *args) {
   }
 }
 
-void Run_Task(char *file_name) {
+static void Run_Task(char *file_name) {
   if (pool->created == pool->capacity) {
 
     // add file name to queue
@@ -156,8 +160,8 @@ void Run_Task(char *file_name) {
 
   } else {
     // lazy create threads
-    pthread_create(&pool->threads[pool->created++], NULL, Thread_Loop,
-                   file_name);
+    assert(pthread_create(&pool->threads[pool->created++], NULL,
+                          Mapper_Thread_Loop, file_name) == 0);
   }
 }
 
@@ -171,7 +175,7 @@ static inline void Init_Pool_Queue() {
   assert(pthread_cond_init(&pool->queue.empty, NULL) == 0);
 }
 
-void Init_Thread_Pool(int capacity) {
+static void Init_Thread_Pool(int capacity) {
   pool = malloc(sizeof(Mapper_Thread_Pool));
   assert(pool != NULL);
   pool->capacity = capacity;
@@ -183,10 +187,79 @@ void Init_Thread_Pool(int capacity) {
   Init_Pool_Queue(pool);
 }
 
+/* 元素交换 */
+static inline void swap(Key_With_Value_List keys[], int i, int j) {
+  Key_With_Value_List tmp = keys[i];
+  keys[i] = keys[j];
+  keys[j] = tmp;
+}
+
+/* 哨兵划分 */
+static int partition(Key_With_Value_List keys[], int left, int right) {
+  // 以 keys[left] 为基准数
+  int i = left, j = right;
+  while (i < j) {
+    while (i < j && strcmp(keys[j].key, keys[left].key) >= 0) {
+      j--; // 从右向左找首个小于基准数的元素
+    }
+    while (i < j && strcmp(keys[j].key, keys[left].key) <= 0) {
+      i++; // 从左向右找首个大于基准数的元素
+    }
+    // 交换这两个元素
+    swap(keys, i, j);
+  }
+  // 将基准数交换至两子数组的分界线
+  swap(keys, i, left);
+  // 返回基准数的索引
+  return i;
+}
+
+/* 快速排序 */
+static void quickSort(Key_With_Value_List keys[], int left, int right) {
+  // 子数组长度为 1 时终止递归
+  if (left >= right) {
+    return;
+  }
+  // 哨兵划分
+  int pivot = partition(keys, left, right);
+  // 递归左子数组、右子数组
+  quickSort(keys, left, pivot - 1);
+  quickSort(keys, pivot + 1, right);
+}
+
+static void Sort_Keys(Part *part) { quickSort(part->keys, 0, part->len - 1); }
+
+static char *Get_Func(char *key, int partition_number) {
+  int iter_k = store.parts[partition_number].iter;
+  Key_With_Value_List *k = &store.parts[partition_number].keys[iter_k];
+  if (k->iter == k->len) {
+    return NULL;
+  }
+  return k->values[k->iter++];
+}
+
+static void *Reducer_Thread(void *p_n) {
+  unsigned long partition_number = (unsigned long)p_n;
+  Part *part = &store.parts[partition_number];
+
+  part->iter = 0;
+  for (int i = 0; i < part->len; i++) {
+
+    // init iter used in Get_Func
+    part->keys[i].iter = 0;
+
+    reducer(part->keys[i].key, Get_Func, partition_number);
+    part->iter++;
+  }
+
+  return NULL;
+}
+
 void MR_Run(int argc, char *argv[], Mapper map, int num_mappers, Reducer reduce,
             int num_reducers, Partitioner partition) {
   // 1. map
   mapper = map;
+  reducer = reduce;
   p = partition;
   // 1.1 init thread pool
   Init_Thread_Pool(num_mappers);
@@ -200,6 +273,19 @@ void MR_Run(int argc, char *argv[], Mapper map, int num_mappers, Reducer reduce,
   // 1.3 destory thread pool
   Wait_And_Destory_Pool();
   // 2. sort
-
+  for (int i = 0; i < num_reducers; i++) {
+    Sort_Keys(&store.parts[i]);
+  }
   // 3. reduce
+  pthread_t *threads = malloc(sizeof(pthread_t) * num_reducers);
+  assert(threads != NULL);
+  for (int i = 0; i < num_reducers; i++) {
+    assert(pthread_create(&threads[i], NULL, Reducer_Thread,
+                          (void *)(unsigned long)i) == 0);
+  }
+
+  for (int i = 0; i < num_reducers; i++) {
+    assert(pthread_join(threads[i], NULL) == 0);
+  }
+  free(threads);
 }
