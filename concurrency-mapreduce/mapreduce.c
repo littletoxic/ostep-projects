@@ -18,7 +18,6 @@ static unsigned int Hash_Func(char *key) {
   unsigned int c;
   while ((c = *key++) != '\0') {
     c *= 0x5bd1e995;
-    c ^= c >> 24;
     hash *= 0x5bd1e995;
     hash ^= c;
   }
@@ -96,10 +95,12 @@ static void Extend(Part *part) {
   free(origin);
 }
 
-static void Ensure_Keys_Capacity(Part *part) {
+static int Ensure_Keys_Capacity(Part *part) {
   if (lf(part) > LOAD_FACTOR) {
     Extend(part);
+    return 1;
   }
+  return 0;
 }
 
 static inline void Ensure_Values_Capacity(Key_With_Values *list) {
@@ -146,9 +147,10 @@ void MR_Emit(char *key, char *value) {
   int pos_k = Find_Place(key, &store.parts[pos_p]);
   if (store.parts[pos_p].keys[pos_k] == NULL) {
     // insert new key
-    Ensure_Keys_Capacity(&store.parts[pos_p]);
-    // 扩容后 pos_k 可能改变
-    pos_k = Find_Place(key, &store.parts[pos_p]);
+    if (Ensure_Keys_Capacity(&store.parts[pos_p]) == 1) {
+      // 扩容后 pos_k 改变
+      pos_k = Find_Place(key, &store.parts[pos_p]);
+    }
     Key_With_Values *key_with_values = Create_Key_With_Values(key);
 
     Insert_Key_To_Partition(&store.parts[pos_p], key_with_values, pos_k);

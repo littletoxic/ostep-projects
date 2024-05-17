@@ -1,0 +1,1 @@
+对 Wordcount 工作负载，插入的 value 均为同一字符串

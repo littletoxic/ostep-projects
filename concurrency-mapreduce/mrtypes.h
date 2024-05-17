@@ -5,7 +5,7 @@
 
 #define QUEUE_MAX (1 << 7)
 #define DEFAULT_LIST_CAPACITY (1 << 15)
-#define LOAD_FACTOR 0.5
+#define LOAD_FACTOR 0.4
 
 typedef struct Wait_Queue {
   char *buffer[QUEUE_MAX];
