@@ -21,20 +21,26 @@ typedef struct Mapper_Thread_Pool {
   Wait_Queue queue;
 } Mapper_Thread_Pool;
 
-// 使用开放寻址线性探测，不需要考虑删除问题
-typedef struct Key_With_Values {
-  char *key;
-  char **values;
+// 作为 HashMap 时不可删除
+typedef struct Collection {
   int len;
   int capacity;
+  void **datas;
+} Collection;
+
+typedef struct Key_With_Values {
+  char *key;
+  // values 数组
+  Collection *values_array;
   // 遍历时初始化
   int iter;
 } Key_With_Values;
 
 typedef struct Part {
-  int len;
-  int capacity;
-  Key_With_Values **keys;
+  // Key_With_Values HashMap
+  Collection *key_with_values_map;
+  // 字符串池
+  Collection *string_pool;
   // each part needs a lock
   pthread_mutex_t lock;
   // 遍历时初始化
@@ -45,5 +51,11 @@ typedef struct Store {
   int partition_count;
   Part *parts;
 } Store;
+
+typedef enum { false, true } bool;
+
+typedef char * (*Key_Selector)(void *data);
+
+typedef void *(*Producer)(char *key);
 
 #endif // __mrtypes_h__

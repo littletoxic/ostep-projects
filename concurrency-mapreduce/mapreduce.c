@@ -29,14 +29,24 @@ static unsigned int Hash_Func(char *key) {
   return hash;
 }
 
+static Collection *Create_Collection(bool list) {
+  Collection *c = malloc(sizeof(Collection));
+  assert(c != NULL);
+  c->len = 0;
+  c->capacity = DEFAULT_LIST_CAPACITY;
+  if (list) {
+    c->datas = malloc(sizeof(void *) * DEFAULT_LIST_CAPACITY);
+  } else {
+    // HashMap 操作需要判断数据是否为空
+    c->datas = calloc(DEFAULT_LIST_CAPACITY, sizeof(void *));
+  }
+  assert(c->datas != NULL);
+  return c;
+}
+
 static void Init_Part(Part *part) {
-  part->len = 0;
-  part->capacity = DEFAULT_LIST_CAPACITY;
-  Key_With_Values **keys;
-  // Find_Place 需要判空，使用 calloc
-  keys = calloc(DEFAULT_LIST_CAPACITY, sizeof(Key_With_Values *));
-  assert(keys != NULL);
-  part->keys = keys;
+  part->key_with_values_map = Create_Collection(false);
+  part->string_pool = Create_Collection(false);
   assert(pthread_mutex_init(&part->lock, NULL) == 0);
 }
 
@@ -51,113 +61,125 @@ static void Init_Store(int num_partitions) {
   }
 }
 
-static int Find_Place(char *key, Part *part) {
-  unsigned int index = Hash_Func(key) % part->capacity;
+static char *Key_With_Values_Selector(void *data) {
+  Key_With_Values *kvs = (Key_With_Values *)data;
+  return kvs->key;
+}
+
+static char *String_Pool_Selector(void *data) { return (char *)data; }
+
+static int Get_Index(char *key, Collection *map, Key_Selector selector) {
+  unsigned int index = Hash_Func(key) % map->capacity;
 
   // 线性探测，不考虑删除
-  while (part->keys[index] != NULL) {
-    if (strcmp(key, part->keys[index]->key) == 0) {
+  while (map->datas[index] != NULL) {
+    if (strcmp(key, selector(map->datas[index])) == 0) {
       return index;
     }
     // 环形
-    index = (index + 1) % part->capacity;
+    index = (index + 1) % map->capacity;
   }
 
   return index;
 }
 
-static inline double lf(Part *part) {
-  return (double)part->len / (double)part->capacity;
+static inline double Get_Load_Factor(Collection *map) {
+  return (double)map->len / (double)map->capacity;
 }
 
-static void Insert_Key_To_Partition(Part *part,
-                                    Key_With_Values *key_with_values,
-                                    int pos_k) {
-  part->keys[pos_k] = key_with_values;
-  part->len++;
+static void Insert_To_Map(Collection *map, void *value, int pos) {
+  map->datas[pos] = value;
+  map->len++;
 }
 
-static void Extend(Part *part) {
-  Key_With_Values **origin = part->keys;
-  int old_capacity = part->capacity;
+static void Extend(Collection *map, Key_Selector selector) {
+  void **origin = map->datas;
+  int old_capacity = map->capacity;
   // 扩容 4 倍
-  part->capacity *= 4;
-  part->len = 0;
-  part->keys = calloc(part->capacity, sizeof(Key_With_Values *));
+  map->capacity *= 4;
+  map->len = 0;
+  map->datas = calloc(map->capacity, sizeof(void *));
 
   for (int i = 0; i < old_capacity; i++) {
     if (origin[i] != NULL) {
-      int pos_k = Find_Place(origin[i]->key, part);
-      assert(part->keys[pos_k] == NULL);
-      Insert_Key_To_Partition(part, origin[i], pos_k);
+      int index = Get_Index(selector(origin[i]), map, selector);
+      assert(map->datas[index] == NULL);
+      Insert_To_Map(map, origin[i], index);
     }
   }
   free(origin);
 }
 
-static int Ensure_Keys_Capacity(Part *part) {
-  if (lf(part) > LOAD_FACTOR) {
-    Extend(part);
-    return 1;
+// true presents extended, otherwise false
+static bool Ensure_Map_Capacity(Collection *map, Key_Selector pred) {
+  if (Get_Load_Factor(map) > LOAD_FACTOR) {
+    Extend(map, pred);
+    return true;
   }
-  return 0;
+  return false;
 }
 
-static inline void Ensure_Values_Capacity(Key_With_Values *list) {
+static inline void Ensure_List_Capacity(Collection *list) {
   if (list->len == list->capacity) {
     list->capacity *= 2;
-    list->values = realloc(list->values, sizeof(char *) * list->capacity);
-    assert(list->values != NULL);
+    list->datas = realloc(list->datas, sizeof(void *) * list->capacity);
+    assert(list->datas != NULL);
   }
 }
 
-// 按定义顺序填充
-static void Key_With_Values_Init(Key_With_Values *key_with_values, char *key) {
-  key_with_values->key = key;
-  key_with_values->values = malloc(sizeof(char *) * DEFAULT_LIST_CAPACITY);
-  assert(key_with_values->values != NULL);
-  key_with_values->len = 0;
-  key_with_values->capacity = DEFAULT_LIST_CAPACITY;
-}
-
-static void Insert_Value(Key_With_Values *list, char *value) {
+static void Insert_To_List(Collection *list, void *value) {
+  Ensure_List_Capacity(list);
   int pos_v = list->len++;
-  list->values[pos_v] = strdup(value);
-  assert(list->values[pos_v] != NULL);
+  list->datas[pos_v] = value;
 }
 
-Key_With_Values *Create_Key_With_Values(char *key) {
+static Key_With_Values *Create_Key_With_Values(char *key) {
   char *key_copy = strdup(key);
   assert(key_copy != NULL);
 
   Key_With_Values *key_with_values = malloc(sizeof(Key_With_Values));
   assert(key_with_values != NULL);
-  Key_With_Values_Init(key_with_values, key_copy);
+  key_with_values->key = key_copy;
+  key_with_values->values_array = Create_Collection(true);
 
   return key_with_values;
+}
+
+static void *KVProd(char *key) { return (void *)Create_Key_With_Values(key); }
+
+static void *Get_Exist_Otherwise_New(char *key, Collection *map,
+                                     Producer producer, Key_Selector selector) {
+  int index = Get_Index(key, map, selector);
+  if (map->datas[index] == NULL) {
+    if (Ensure_Map_Capacity(map, selector) == true) {
+      index = Get_Index(key, map, selector);
+    }
+    void *new_value = producer(key);
+    Insert_To_Map(map, new_value, index);
+  }
+  return map->datas[index];
+}
+
+static void *String_Pool_Prod(char *value) {
+  char *value_copy = strdup(value);
+  assert(value_copy != NULL);
+  return (void *)value_copy;
 }
 
 void MR_Emit(char *key, char *value) {
   assert(key != NULL);
   assert(value != NULL);
   unsigned long pos_p = p(key, store.partition_count);
+  Part *part = &store.parts[pos_p];
+  assert(pthread_mutex_lock(&part->lock) == 0);
 
-  assert(pthread_mutex_lock(&store.parts[pos_p].lock) == 0);
+  Key_With_Values *kv = Get_Exist_Otherwise_New(
+      key, part->key_with_values_map, KVProd, Key_With_Values_Selector);
 
-  int pos_k = Find_Place(key, &store.parts[pos_p]);
-  if (store.parts[pos_p].keys[pos_k] == NULL) {
-    // insert new key
-    if (Ensure_Keys_Capacity(&store.parts[pos_p]) == 1) {
-      // 扩容后 pos_k 改变
-      pos_k = Find_Place(key, &store.parts[pos_p]);
-    }
-    Key_With_Values *key_with_values = Create_Key_With_Values(key);
+  char *value_in_pool = Get_Exist_Otherwise_New(
+      value, part->string_pool, String_Pool_Prod, String_Pool_Selector);
 
-    Insert_Key_To_Partition(&store.parts[pos_p], key_with_values, pos_k);
-  }
-
-  Ensure_Values_Capacity(store.parts[pos_p].keys[pos_k]);
-  Insert_Value(store.parts[pos_p].keys[pos_k], value);
+  Insert_To_List(kv->values_array, value_in_pool);
 
   assert(pthread_mutex_unlock(&store.parts[pos_p].lock) == 0);
 }
@@ -299,57 +321,75 @@ static void quickSort(Key_With_Values *keys[], int left, int right) {
 
 static char *Get_Func(char *key, int partition_number) {
   int iter_k = store.parts[partition_number].iter;
-  Key_With_Values *k = store.parts[partition_number].keys[iter_k];
-  if (k->iter == k->len) {
+  Key_With_Values *k =
+      store.parts[partition_number].key_with_values_map->datas[iter_k];
+  if (k->iter == k->values_array->len) {
     return NULL;
   }
-  return k->values[k->iter++];
+  return k->values_array->datas[k->iter++];
 }
 
-static void Compact(Part *part) {
+static void Compact(Collection *map) {
   int now = 0;
-  for (int i = 0; i < part->capacity; i++) {
-    if (part->keys[i] != NULL) {
-      part->keys[now] = part->keys[i];
+  for (int i = 0; i < map->capacity; i++) {
+    if (map->datas[i] != NULL) {
+      map->datas[now] = map->datas[i];
       now++;
     }
-    if (now == part->len) {
+    if (now == map->len) {
       break;
     }
   }
 }
 
+static void Destory_String_Pool_List(Collection *list) {
+  for (int i = 0; i < list->capacity; i++) {
+    if (list->datas[i] != NULL) {
+      free(list->datas[i]);
+    }
+  }
+  free(list->datas);
+  free(list);
+}
+
+static void Destory_Key_With_Values(Key_With_Values *kv) {
+  free(kv->key);
+  // don't need to do, each value string is in string pool
+  // Destory_Simple_List(kv->values_array);
+  free(kv->values_array->datas);
+  free(kv->values_array);
+  free(kv);
+}
+
 static void *Reducer_Thread(void *p_n) {
   unsigned long partition_number = (unsigned long)p_n;
   Part *part = &store.parts[partition_number];
-  Compact(part);
+  Compact(part->key_with_values_map);
   // sort in parallel
-  quickSort(part->keys, 0, part->len - 1);
+  quickSort((Key_With_Values **)part->key_with_values_map->datas, 0,
+            part->key_with_values_map->len - 1);
 
   part->iter = 0;
-  for (int i = 0; i < part->len; i++) {
+  for (int i = 0; i < part->key_with_values_map->len; i++) {
     // init iter used in Get_Func
-    part->keys[i]->iter = 0;
+    Key_With_Values *now =
+        (Key_With_Values *)part->key_with_values_map->datas[i];
+    now->iter = 0;
 
-    reducer(part->keys[i]->key, Get_Func, partition_number);
+    reducer(now->key, Get_Func, partition_number);
     part->iter++;
   }
 
   // release resources in part
-  for (int i = 0; i < part->len; i++) {
-    for (int j = 0; j < part->keys[i]->len; j++) {
-      // free each saved value
-      free(part->keys[i]->values[j]);
-    }
-    // free key
-    free(part->keys[i]->key);
-    // free values array
-    free(part->keys[i]->values);
-    // free Key_With_Values struct
-    free(part->keys[i]);
+  // Destory key_with_values_map
+  for (int i = 0; i < part->key_with_values_map->len; i++) {
+    Destory_Key_With_Values(part->key_with_values_map->datas[i]);
   }
-  // free Key_With_Value_List struct array
-  free(part->keys);
+  free(part->key_with_values_map->datas);
+  free(part->key_with_values_map);
+
+  // Destory string_pool
+  Destory_String_Pool_List(part->string_pool);
 
   assert(pthread_mutex_destroy(&part->lock) == 0);
 
@@ -358,7 +398,7 @@ static void *Reducer_Thread(void *p_n) {
 
 void MR_Run(int argc, char *argv[], Mapper map, int num_mappers, Reducer reduce,
             int num_reducers, Partitioner partition) {
-  // 1. map
+  // 全局变量
   mapper = map;
   reducer = reduce;
   p = partition;
@@ -373,7 +413,7 @@ void MR_Run(int argc, char *argv[], Mapper map, int num_mappers, Reducer reduce,
   // wait all threads finished
   // 1.3 destory thread pool
   Wait_And_Destory_Pool();
-  // 2. sort (now in parallel)
+  // 2. sort (now in Reducer_Thread)
 
   // 3. reduce
   pthread_t *threads = malloc(sizeof(pthread_t) * num_reducers);
